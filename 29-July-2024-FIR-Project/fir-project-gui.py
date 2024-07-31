@@ -52,15 +52,13 @@ def process_suggestions():
 
 # Function to show loading animation
 def show_loading_animation():
-    loading_label.pack()
-    progress_bar.pack()
+    loading_frame.pack(pady=10)  # Show the loading frame
     progress_bar.start()
     root.update_idletasks()  # Update the GUI
 
 # Function to hide loading animation
 def hide_loading_animation():
-    loading_label.pack_forget()
-    progress_bar.pack_forget()
+    loading_frame.pack_forget()  # Hide the loading frame
     progress_bar.stop()
 
 # Function to update the output text
@@ -69,9 +67,20 @@ def update_output_text(suggestions):
     if suggestions:
         output_text.insert(END, "Suggested Sections are:\n\n")
         for suggestion in suggestions:
-            output_text.insert(END, f"Description: {suggestion['Description']}\n")
-            output_text.insert(END, f"Offense: {suggestion['Offense']}\n")
-            output_text.insert(END, f"Punishment: {suggestion['Punishment']}\n")
+            output_text.insert(END, "Description: ", 'bold')
+            output_text.insert(END, f"{suggestion['Description']}\n")
+            output_text.insert(END, "Offense: ", 'bold')
+            output_text.insert(END, f"{suggestion['Offense']}\n")
+            output_text.insert(END, "Punishment: ", 'bold')
+            output_text.insert(END, f"{suggestion['Punishment']}\n")
+            output_text.insert(END, "Cognizable: ", 'bold')
+            output_text.insert(END, f"{suggestion['Cognizable']}\n")
+            output_text.insert(END, "Bailable: ", 'bold')
+            output_text.insert(END, f"{suggestion['Bailable']}\n")
+            output_text.insert(END, "Court: ", 'bold')
+            output_text.insert(END, f"{suggestion['Court']}\n")
+            output_text.insert(END, "Combo: ", 'bold')
+            output_text.insert(END, f"{suggestion['Combo']}\n")
             output_text.insert(END, "_________________________________________________________________________________________\n\n")
     else:
         output_text.insert(END, "No record is found")
@@ -103,11 +112,13 @@ complaint_entry.pack(pady=5)
 suggest_button = Button(main_frame, text='Get Suggestions', command=on_suggest_button_click, font=('Helvetica', 14, 'bold'), bg='#20b2aa', fg='white', bd=0, relief='flat')
 suggest_button.pack(pady=10)
 
-# Loading Animation Label
-loading_label = Label(main_frame, text="Loading...", font=('Helvetica', 14, 'italic'), bg='#f0f8ff', fg='#ff4500')  # OrangeRed color
+# Loading Animation
+loading_frame = Frame(main_frame, bg='#f0f8ff')  # Create the frame but hide it initially
+loading_label = Label(loading_frame, text="Loading...", font=('Helvetica', 14, 'italic'), bg='#f0f8ff', fg='#ff4500')  # OrangeRed color
+loading_label.pack()
 
-# Progress Bar
-progress_bar = ttk.Progressbar(main_frame, mode='indeterminate')
+progress_bar = ttk.Progressbar(loading_frame, mode='indeterminate', length=200)
+progress_bar.pack()
 
 # Output Text with Scrollbar
 output_frame = Frame(main_frame)
@@ -120,5 +131,8 @@ output_text = Text(output_frame, width=80, height=20, wrap='word', yscrollcomman
 output_text.pack(expand=True, fill='both')
 
 scrollbar.config(command=output_text.yview)
+
+# Configure text tags
+output_text.tag_configure('bold', font=('Helvetica', 12, 'bold'))
 
 root.mainloop()
