@@ -4,7 +4,7 @@ from tkinter import scrolledtext
 
 # API URL and headers
 API_URL = "https://api-inference.huggingface.co/models/google-bert/bert-large-uncased-whole-word-masking-finetuned-squad"
-headers = {"Authorization": "Bearer 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"}
+headers = {"Authorization": "Bearer 'your token here"}
 
 def query(payload):
     response = requests.post(API_URL, headers=headers, json=payload)
