@@ -1,107 +1,145 @@
 import tkinter as tk
 import tkinter.messagebox as messagebox
-import speech_recognition as sr
-import threading
-import pyaudio 
-import wave
-import os
+import nltk
+import csv
 import numpy as np
+import torch
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from transformers import AutoTokenizer, AutoModel
+from sklearn.metrics.pairwise import cosine_similarity
 
-class SpeechToTextApp(tk.Tk):
+
+class NLPQuizApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Speech to Text Converter')
-        self.geometry('400x300')
-        self.configure(bg='#f0f0f0')  # Set background color of the window
+        self.title('NLP Quiz')
+        self.geometry('500x400')  # Adjusted size to fit the new button
+        self.configure(bg='#f0f0f0')
 
-        # Create a folder to save recordings
-        self.recordings_folder = 'recordings'
-        if not os.path.exists(self.recordings_folder):
-            os.makedirs(self.recordings_folder)
-        
-        self.audio_file_path = os.path.join(self.recordings_folder, 'recorded_audio.wav')
-        self.recording = False
+        # Initialize NLP components
+        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words = set(stopwords.words('english'))
+        self.tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
+        self.model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
 
-        # Create and place widgets with improved colors and styles
-        self.record_button = tk.Button(self, text='Start Recording', command=self.start_recording, bg='#4CAF50', fg='white', font=('Arial', 12))
-        self.record_button.pack(pady=10)
+        # Load questions and answers
+        self.questions_answers = self.load_questions_answers('questions_answers.csv')
+        self.current_question_index = 0
+        self.score = 0
+        self.total_questions = len(self.questions_answers)
 
-        self.stop_record_button = tk.Button(self, text='Stop Recording', command=self.stop_recording, state=tk.DISABLED, bg='#f44336', fg='white', font=('Arial', 12))
-        self.stop_record_button.pack(pady=10)
+        # Create and place widgets
+        self.create_widgets()
 
-        self.play_record_button = tk.Button(self, text='Play Recording', command=self.play_recording, state=tk.DISABLED, bg='#2196F3', fg='white', font=('Arial', 12))
-        self.play_record_button.pack(pady=10)
+    def create_widgets(self):
+        self.question_label = tk.Label(self, text='', bg='#f0f0f0', font=('Arial', 16), wraplength=400)
+        self.question_label.pack(pady=20)
 
-        self.convert_record_button = tk.Button(self, text='Convert Recording to Text', command=self.convert_recording_to_text, state=tk.DISABLED, bg='#FFC107', fg='black', font=('Arial', 12))
-        self.convert_record_button.pack(pady=10)
+        self.answer_entry = tk.Entry(self, width=50, font=('Arial', 14))
+        self.answer_entry.pack(pady=10)
 
-        # Audio level indicator
-        self.audio_level_canvas = tk.Canvas(self, width=300, height=30, bg='#e0e0e0', borderwidth=2, relief='sunken')
-        self.audio_level_canvas.pack(pady=20)
+        self.submit_button = tk.Button(self, text='Submit Answer', command=self.submit_answer, bg='#4CAF50', fg='white', font=('Arial', 14))
+        self.submit_button.pack(pady=10)
 
-    def start_recording(self):
-        self.recording = True
-        self.record_button.config(state=tk.DISABLED)
-        self.stop_record_button.config(state=tk.NORMAL)
-        self.play_record_button.config(state=tk.DISABLED)
-        self.convert_record_button.config(state=tk.DISABLED)
+        self.result_label = tk.Label(self, text='', bg='#f0f0f0', font=('Arial', 14))
+        self.result_label.pack(pady=10)
 
-        self.audio = pyaudio.PyAudio()
-        self.stream = self.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
-        self.frames = []
-        self.recording_thread = threading.Thread(target=self.record)
-        self.recording_thread.start()
+        self.start_quiz_button = tk.Button(self, text='Start Quiz', command=self.start_quiz, bg='#4CAF50', fg='white', font=('Arial', 14))
+        self.start_quiz_button.pack(pady=10)
 
-    def record(self):
-        while self.recording:
-            data = self.stream.read(1024)
-            self.frames.append(data)
-            # Calculate audio level
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            audio_level = np.abs(audio_data).mean()
-            self.update_audio_level(audio_level)
+        self.progress_label = tk.Label(self, text='', bg='#f0f0f0', font=('Arial', 12))
+        self.progress_label.pack(pady=10)
 
-    def update_audio_level(self, level):
-        max_level = 1000  # Adjust this value based on expected input range
-        normalized_level = min(level / max_level, 1.0)
-        self.audio_level_canvas.delete('all')
-        self.audio_level_canvas.create_rectangle(0, 0, 300 * normalized_level, 30, fill='green')
-
-    def stop_recording(self):
-        self.recording = False
-        self.stream.stop_stream()
-        self.stream.close()
-        self.audio.terminate()  # Properly terminate the PyAudio instance
-
-        with wave.open(self.audio_file_path, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(self.audio.get_sample_size(pyaudio.paInt16))
-            wf.setframerate(44100)
-            wf.writeframes(b''.join(self.frames))
-
-        self.record_button.config(state=tk.NORMAL)
-        self.stop_record_button.config(state=tk.DISABLED)
-        self.play_record_button.config(state=tk.NORMAL)
-        self.convert_record_button.config(state=tk.NORMAL)
-
-    def play_recording(self):
-        if os.name == 'nt':  # Windows
-            os.system(f'start {self.audio_file_path}')
-        else:  # Unix-based
-            os.system(f'aplay {self.audio_file_path}')
-
-    def convert_recording_to_text(self):
-        rs = sr.Recognizer()
+    def load_questions_answers(self, file_path):
+        questions_answers = []
         try:
-            with sr.AudioFile(self.audio_file_path) as source:
-                audio_data = rs.record(source)
-                text = rs.recognize_google(audio_data)
-                messagebox.showinfo("Speech to Text", text)
-        except sr.UnknownValueError:
-            messagebox.showwarning("Speech to Text", "Could not recognize the audio!")
-        except sr.RequestError as e:
-            messagebox.showerror("Speech to Text", f"Error occurred: {e}")
+            with open(file_path, mode='r', newline='', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip the header row
+                for row in reader:
+                    if len(row) == 2:
+                        question, answer = row
+                        questions_answers.append((question, answer))
+                    else:
+                        print(f"Skipping invalid row: {row}")
+        except FileNotFoundError:
+            messagebox.showerror("Error", "Questions and Answers file not found.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        return questions_answers
+
+    def start_quiz(self):
+        self.current_question_index = 0
+        self.score = 0
+        self.display_next_question()
+
+    def display_next_question(self):
+        if self.current_question_index < self.total_questions:
+            question, _ = self.questions_answers[self.current_question_index]
+            self.question_label.config(text=question)
+            self.answer_entry.delete(0, tk.END)
+            self.update_progress()
+        else:
+            self.show_score_analysis()
+
+    def preprocess_text(self, text):
+        # Tokenize, remove stopwords, and lemmatize the text
+        tokens = nltk.word_tokenize(text.lower())
+        filtered_tokens = [self.lemmatizer.lemmatize(token) for token in tokens if token not in self.stop_words]
+        return ' '.join(filtered_tokens)
+
+    def get_embedding(self, text):
+        inputs = self.tokenizer(text, return_tensors='pt', padding=True, truncation=True)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        return outputs.last_hidden_state.mean(dim=1).numpy()
+
+    def submit_answer(self):
+        user_answer = self.answer_entry.get().strip()
+        correct_answer = self.questions_answers[self.current_question_index][1].strip()
+
+        preprocessed_user_answer = self.preprocess_text(user_answer)
+        preprocessed_correct_answer = self.preprocess_text(correct_answer)
+
+        user_embedding = self.get_embedding(preprocessed_user_answer)
+        correct_embedding = self.get_embedding(preprocessed_correct_answer)
+
+        similarity_score = cosine_similarity(user_embedding, correct_embedding)[0][0]
+
+        print(f"Similarity Score: {similarity_score:.4f}")
+
+        threshold = 0.5  
+        if similarity_score > threshold:
+            self.score += 1
+            result_text = (f"Correct!\n\n"
+                           f"Entered Answer: '{user_answer}'\n"
+                           f"Correct Answer: '{correct_answer}'\n"
+                           f"Similarity Score: {similarity_score * 100:.2f}%")
+        else:
+            result_text = (f"Incorrect.\n\n"
+                           f"Entered Answer: '{user_answer}'\n"
+                           f"Correct Answer: '{correct_answer}'\n"
+                           f"Similarity Score: {similarity_score * 100:.2f}%")
+
+        self.result_label.config(text=result_text)
+
+        # next question
+        self.current_question_index += 1
+        self.display_next_question()
+
+    def show_score_analysis(self):
+        result_text = f"Quiz completed!\n\nYour Score: {self.score}/{self.total_questions}"
+        percentage = (self.score / self.total_questions) * 100
+        result_text += f"\nYour Percentage: {percentage:.2f}%"
+        messagebox.showinfo("Quiz Result", result_text)
+        self.result_label.config(text=result_text)
+
+    def update_progress(self):
+        progress_text = f"Question {self.current_question_index + 1}/{self.total_questions}"
+        self.progress_label.config(text=progress_text)
+
 
 if __name__ == "__main__":
-    app = SpeechToTextApp()
+    app = NLPQuizApp()
     app.mainloop()
